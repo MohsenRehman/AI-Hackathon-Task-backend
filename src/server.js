@@ -7,7 +7,7 @@ validateEnv();
 const PORT = config.port;
 
 const server = app.listen(PORT, () => {
-  console.log(`Server running in${config.env} mode on http://localhost:${PORT}`);
+  console.log(`Server running in ${config.env} mode on http://localhost:${PORT}`);
 });
 
 // Handle unhandled promise rejections
