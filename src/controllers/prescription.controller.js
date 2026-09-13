@@ -38,6 +38,16 @@ export const getPrescriptions = asyncHandler(async (req, res, next) => {
   let query = {};
   if (req.user.role === 'doctor') {
     query.doctorId = req.user._id;
+  } else if (req.user.role === 'patient') {
+    const { Patient } = await import('../models/Patient.model.js');
+    const patientDoc = await Patient.findOne({
+      $or: [
+        { createdBy: req.user._id },
+        { 'contact.email': req.user.email },
+        { name: req.user.name },
+      ],
+    });
+    query.patientId = patientDoc ? patientDoc._id : req.user._id;
   }
 
   const prescriptions = await Prescription.find(query)

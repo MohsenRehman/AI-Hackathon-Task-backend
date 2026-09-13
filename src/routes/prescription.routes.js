@@ -9,7 +9,7 @@ const router = Router();
 router.use(protect);
 
 router.post('/', authorize('admin', 'doctor'), createPrescription);
-router.get('/', authorize('admin', 'doctor'), getPrescriptions);
-router.get('/:id/download', requirePlan('exportReports'), downloadPrescription);
+router.get('/', authorize('admin', 'doctor', 'patient'), getPrescriptions);
+router.get('/:id/download', downloadPrescription);
 
 export default router;

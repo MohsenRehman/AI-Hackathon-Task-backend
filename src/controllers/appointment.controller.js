@@ -4,8 +4,36 @@ import { successResponse } from '../utils/apiResponse.js';
 import { getPaginationData, getPaginationMeta } from '../utils/pagination.js';
 
 export const createAppointment = asyncHandler(async (req, res, next) => {
-  const appointment = await Appointment.create(req.body);
-  successResponse(res, 201, 'Appointment created successfully', appointment);
+  let { patientId, doctorId, scheduledAt, type, duration } = req.body;
+
+  if (req.user.role === 'patient') {
+    if (!patientId) {
+      const { Patient } = await import('../models/Patient.model.js');
+      const patientDoc = await Patient.findOne({
+        $or: [
+          { createdBy: req.user._id },
+          { 'contact.email': req.user.email },
+          { name: req.user.name },
+        ],
+      });
+      patientId = patientDoc ? patientDoc._id : req.user._id;
+    }
+  }
+
+  const appointment = await Appointment.create({
+    patientId,
+    doctorId,
+    scheduledAt,
+    type: type || 'in-person',
+    duration: duration || 30,
+    status: 'scheduled',
+  });
+
+  const populated = await Appointment.findById(appointment._id)
+    .populate('patientId', 'name contact')
+    .populate('doctorId', 'name');
+
+  successResponse(res, 201, 'Appointment created successfully', populated);
 });
 
 export const getAppointments = asyncHandler(async (req, res, next) => {
@@ -15,8 +43,15 @@ export const getAppointments = asyncHandler(async (req, res, next) => {
   if (req.user.role === 'doctor') {
     query.doctorId = req.user._id;
   } else if (req.user.role === 'patient') {
-    // Note: patient needs a way to map to Patient record. Assume frontend sends patient ID or it's linked
-    // For this generic implementation, we'll return all if admin/receptionist
+    const { Patient } = await import('../models/Patient.model.js');
+    const patientDoc = await Patient.findOne({
+      $or: [
+        { createdBy: req.user._id },
+        { 'contact.email': req.user.email },
+        { name: req.user.name },
+      ],
+    });
+    query.patientId = patientDoc ? patientDoc._id : req.user._id;
   }
 
   const appointments = await Appointment.find(query)

@@ -3,16 +3,22 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 
 export const requirePlan = (feature) => {
   return asyncHandler(async (req, res, next) => {
-    if (!req.user || !req.user.subscriptionPlan) {
-      return next(new AppError('No subscription plan found. Please upgrade to access this feature.', 403, 'PLAN_LIMIT_EXCEEDED'));
-    }
-
-    const plan = req.user.subscriptionPlan;
-
     // Admin bypass
     if (req.user.role === 'admin') {
       return next();
     }
+
+    if (!req.user || !req.user.subscriptionPlan) {
+      const { Subscription } = await import('../models/Subscription.model.js');
+      const { createSubscription } = await import('../services/subscription.service.js');
+      let sub = await Subscription.findOne({ userId: req.user._id });
+      if (!sub) {
+        sub = await createSubscription(req.user._id, 'free');
+      }
+      req.user.subscriptionPlan = sub;
+    }
+
+    const plan = req.user.subscriptionPlan;
 
     // Check if plan has expired (assuming 'active' status is required)
     if (plan.status !== 'active') {

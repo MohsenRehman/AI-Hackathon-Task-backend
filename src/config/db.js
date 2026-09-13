@@ -4,36 +4,88 @@ import { config } from './env.js';
 let cachedConnection = null;
 
 export const connectDB = async () => {
-  if (cachedConnection) {
-    console.log('Using cached database connection');
+  if (cachedConnection && mongoose.connection.readyState === 1) {
+    return cachedConnection;
+  }
+
+  if (mongoose.connection.readyState === 2) {
+    await mongoose.connection.asPromise();
     return cachedConnection;
   }
 
   if (!config.db.uri) {
     console.error('MongoDB URI is missing');
-    if (process.env.NODE_ENV === 'production') process.exit(1);
     return null;
   }
 
   try {
     const conn = await mongoose.connect(config.db.uri, {
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      bufferCommands: false, // Don't buffer forever if disconnected
     });
 
     cachedConnection = conn;
     console.log(`MongoDB Connected: ${conn.connection.host}`);
     
-    // Run patient-user synchronization in the background
+    // Run patient-user synchronization and default seeds in the background
+    seedInitialDemoAccounts().catch((err) => console.error('Background seed failed:', err));
     syncPatientsAndUsers().catch((err) => console.error('Background synchronization failed:', err));
 
     return conn;
   } catch (error) {
     console.error(`Error connecting to MongoDB: ${error.message}`);
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
+    // Do not call process.exit(1) on serverless environments to prevent container termination
+    throw error;
+  }
+};
+
+export const seedInitialDemoAccounts = async () => {
+  try {
+    const { User } = await import('../models/User.model.js');
+    const { Patient } = await import('../models/Patient.model.js');
+    const { createSubscription } = await import('../services/subscription.service.js');
+
+    const demoUsers = [
+      { name: 'Dr. Sarah Connor', email: 'doctor@cliniq.ai', password: 'Doctor@123', role: 'doctor', plan: 'pro' },
+      { name: 'System Administrator', email: 'admin@cliniq.ai', password: 'Admin@123', role: 'admin', plan: 'enterprise' },
+      { name: 'Front Desk Reception', email: 'receptionist@cliniq.ai', password: 'Receptionist@123', role: 'receptionist', plan: 'free' },
+      { name: 'Bruce Wayne', email: 'patient@cliniq.ai', password: 'Patient@123', role: 'patient', plan: 'free' },
+    ];
+
+    for (const demo of demoUsers) {
+      const exists = await User.findOne({ email: demo.email });
+      if (!exists) {
+        console.log(`Seeding demo user: ${demo.email}`);
+        const user = await User.create({
+          name: demo.name,
+          email: demo.email,
+          password: demo.password,
+          role: demo.role,
+        });
+
+        const sub = await createSubscription(user._id, demo.plan);
+        user.subscriptionPlan = sub._id;
+        await user.save();
+
+        if (demo.role === 'patient') {
+          await Patient.create({
+            name: demo.name,
+            age: 35,
+            gender: 'male',
+            contact: {
+              phone: '+1 555-0199',
+              email: demo.email,
+              address: 'Gotham City',
+            },
+            createdBy: user._id,
+          });
+        }
+      }
     }
+  } catch (err) {
+    console.error('Error during demo accounts seed:', err.message);
   }
 };
 

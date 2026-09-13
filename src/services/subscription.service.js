@@ -52,8 +52,11 @@ export const upgradeSubscription = async (userId, planType) => {
       status: 'active',
       expiryDate,
     },
-    { new: true }
+    { new: true, upsert: true, setDefaultsOnInsert: true }
   );
+
+  const { User } = await import('../models/User.model.js');
+  await User.findByIdAndUpdate(userId, { subscriptionPlan: subscription._id });
 
   return subscription;
 };

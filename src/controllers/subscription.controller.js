@@ -9,5 +9,14 @@ export const upgradePlan = asyncHandler(async (req, res, next) => {
 });
 
 export const getMyPlan = asyncHandler(async (req, res, next) => {
-  successResponse(res, 200, 'Current plan details fetched', req.user.subscriptionPlan);
+  let plan = req.user.subscriptionPlan;
+  if (!plan) {
+    const { Subscription } = await import('../models/Subscription.model.js');
+    const { createSubscription } = await import('../services/subscription.service.js');
+    plan = await Subscription.findOne({ userId: req.user._id });
+    if (!plan) {
+      plan = await createSubscription(req.user._id, req.user.role === 'admin' ? 'enterprise' : 'free');
+    }
+  }
+  successResponse(res, 200, 'Current plan details fetched', plan);
 });
